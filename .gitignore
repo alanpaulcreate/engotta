@@ -9,6 +9,7 @@ data/*.db-journal
 
 # Environment variables
 .env
+.env.example
 
 # Virtual environment
 venv/
