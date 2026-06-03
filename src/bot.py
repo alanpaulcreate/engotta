@@ -17,15 +17,15 @@ from src.handlers.admin import (
     # Addbus conversation
     addbus_start, addbus_choose_dest, addbus_enter_name, 
     addbus_choose_type, addbus_enter_time, addbus_enter_duration, 
-    addbus_choose_daytype,
+    addbus_enter_from, addbus_choose_daytype,
     ADD_CHOOSE_DEST, ADD_ENTER_NAME, ADD_CHOOSE_TYPE, 
-    ADD_ENTER_TIME, ADD_ENTER_DURATION, ADD_CHOOSE_DAYTYPE,
+    ADD_ENTER_TIME, ADD_ENTER_DURATION, ADD_ENTER_FROM, ADD_CHOOSE_DAYTYPE,
     # Editbus conversation
     editbus_start, editbus_choose_dest, editbus_select_sched,
     editbus_choose_field, editbus_enter_time, editbus_enter_duration,
-    editbus_choose_daytype,
+    editbus_enter_from, editbus_choose_daytype,
     EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD,
-    EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_CHOOSE_DAYTYPE,
+    EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_ENTER_FROM, EDIT_CHOOSE_DAYTYPE,
     # Deletebus conversation
     deletebus_start, deletebus_choose_dest, deletebus_select_sched,
     deletebus_confirm,
@@ -61,6 +61,7 @@ def main() -> None:
             ADD_CHOOSE_TYPE: [CallbackQueryHandler(addbus_choose_type, pattern="^add_type_.*$|^add_cancel$")],
             ADD_ENTER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, addbus_enter_time)],
             ADD_ENTER_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, addbus_enter_duration)],
+            ADD_ENTER_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, addbus_enter_from)],
             ADD_CHOOSE_DAYTYPE: [CallbackQueryHandler(addbus_choose_daytype, pattern="^add_day_.*$|^add_cancel$")],
         },
         fallbacks=[
@@ -79,6 +80,7 @@ def main() -> None:
             EDIT_CHOOSE_FIELD: [CallbackQueryHandler(editbus_choose_field, pattern="^edit_field_.*$|^edit_cancel$")],
             EDIT_ENTER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_time)],
             EDIT_ENTER_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_duration)],
+            EDIT_ENTER_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_from)],
             EDIT_CHOOSE_DAYTYPE: [CallbackQueryHandler(editbus_choose_daytype, pattern="^edit_day_.*$|^edit_cancel$")],
         },
         fallbacks=[
@@ -115,7 +117,7 @@ def main() -> None:
     application.add_handler(CommandHandler("listholidays", list_holidays_command))
     
     # 5. Register Callback Query Handlers (User-facing actions)
-    application.add_handler(CallbackQueryHandler(destination_callback, pattern="^dest_\\d+$"))
+    application.add_handler(CallbackQueryHandler(destination_callback, pattern="^dest_\\d+(?:_from_.+)?$"))
     application.add_handler(CallbackQueryHandler(available_now_callback, pattern="^available_now$"))
     application.add_handler(CallbackQueryHandler(route_details_callback, pattern="^route_\\d+$"))
     application.add_handler(CallbackQueryHandler(start_command, pattern="^menu_back$"))

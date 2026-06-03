@@ -208,6 +208,24 @@ def seed_initial_data() -> None:
                 (dest_ids["Kaliyar"], bus_ids[bus_name], arr_time, duration, day_type)
             )
             
+        # Data for Njarakkadu (Towards Njarakkadu, coming from different origin points)
+        njarakkadu_schedules = [
+            ("Jeeva", "07:00", 50, "daily", "Muvattupuzha"),
+            ("RoseLand", "08:15", 50, "daily", "Muvattupuzha"),
+            ("St. George", "09:30", 50, "daily", "Kothamangalam"),
+            ("KSRTC Kattappana", "11:45", 50, "daily", "Kaliyar"),
+            ("Meeras", "14:15", 50, "daily", "Thodupuzha"),
+            ("Sreelakshmi", "16:30", 50, "daily", "Muvattupuzha"),
+            ("Jeeva", "18:45", 50, "daily", "Kaliyar"),
+            ("Sreekutty", "20:00", 50, "daily", "Thodupuzha")
+        ]
+        
+        for bus_name, arr_time, duration, day_type, from_pt in njarakkadu_schedules:
+            cursor.execute(
+                "INSERT INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type, from_point) VALUES (?, ?, ?, ?, ?, ?)",
+                (dest_ids["Njarakkadu"], bus_ids[bus_name], arr_time, duration, day_type, from_pt)
+            )
+            
         conn.commit()
         logger.info("Database successfully seeded with real bus schedules.")
 
@@ -235,26 +253,43 @@ def is_date_holiday(date_str: str) -> bool:
         cursor.execute("SELECT 1 FROM holidays WHERE holiday_date = ?", (date_str,))
         return cursor.fetchone() is not None
 
-def get_next_buses(destination_id: int, current_time: str, day_type: str, limit: int = 4) -> List[Dict[str, Any]]:
+def get_distinct_from_points(destination_id: int) -> List[str]:
+    """Fetches distinct starting points (from_point) for a given destination ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT from_point FROM schedules WHERE destination_id = ? ORDER BY from_point ASC",
+            (destination_id,)
+        )
+        return [row["from_point"] for row in cursor.fetchall()]
+
+def get_next_buses(destination_id: int, current_time: str, day_type: str, limit: int = 4, from_point: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Finds the next upcoming buses for a specific destination and day type, handling midnight wrap-around.
+    Optionally filters by the starting point (from_point).
     Returns up to 'limit' schedules.
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
         # Select all schedules that match the destination and day type (including daily)
-        cursor.execute("""
-            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type,
+        query = """
+            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type, s.from_point,
                    b.name as bus_name, b.type as bus_type, d.name as destination_name
             FROM schedules s
             JOIN buses b ON s.bus_id = b.id
             JOIN destinations d ON s.destination_id = d.id
             WHERE s.destination_id = ?
               AND (s.day_type = 'daily' OR s.day_type = ?)
-            ORDER BY s.arrival_time ASC
-        """, (destination_id, day_type))
+        """
+        params = [destination_id, day_type]
+        if from_point:
+            query += " AND s.from_point = ?"
+            params.append(from_point)
+            
+        query += " ORDER BY s.arrival_time ASC"
         
+        cursor.execute(query, params)
         schedules = [dict(row) for row in cursor.fetchall()]
         if not schedules:
             return []
@@ -272,8 +307,8 @@ def get_schedule_details(schedule_id: int) -> Optional[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type,
-                   b.name as bus_name, b.type as bus_type, d.name as destination_name
+            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type, s.from_point,
+                   b.name as bus_name, b.type as bus_type, d.name as destination_name, s.bus_id, s.destination_id
             FROM schedules s
             JOIN buses b ON s.bus_id = b.id
             JOIN destinations d ON s.destination_id = d.id
@@ -307,26 +342,26 @@ def get_buses() -> List[Dict[str, Any]]:
         cursor.execute("SELECT id, name, type FROM buses ORDER BY name ASC")
         return [dict(row) for row in cursor.fetchall()]
 
-def add_schedule(destination_id: int, bus_id: int, arrival_time: str, travel_duration: int, day_type: str) -> int:
+def add_schedule(destination_id: int, bus_id: int, arrival_time: str, travel_duration: int, day_type: str, from_point: str = 'Njarakkadu') -> int:
     """Adds a new schedule/timetable entry to the database."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type)
-            VALUES (?, ?, ?, ?, ?)
-        """, (destination_id, bus_id, arrival_time, travel_duration, day_type))
+            INSERT INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type, from_point)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (destination_id, bus_id, arrival_time, travel_duration, day_type, from_point))
         conn.commit()
         return cursor.lastrowid
 
-def update_schedule(schedule_id: int, arrival_time: str, travel_duration: int, day_type: str) -> bool:
+def update_schedule(schedule_id: int, arrival_time: str, travel_duration: int, day_type: str, from_point: str) -> bool:
     """Updates timetable entry timings and metadata."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE schedules
-            SET arrival_time = ?, travel_duration = ?, day_type = ?
+            SET arrival_time = ?, travel_duration = ?, day_type = ?, from_point = ?
             WHERE id = ?
-        """, (arrival_time, travel_duration, day_type, schedule_id))
+        """, (arrival_time, travel_duration, day_type, from_point, schedule_id))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -360,7 +395,7 @@ def get_all_schedules() -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type,
+            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type, s.from_point,
                    b.name as bus_name, b.type as bus_type, d.name as destination_name, s.bus_id
             FROM schedules s
             JOIN buses b ON s.bus_id = b.id
@@ -374,7 +409,7 @@ def get_schedules_by_destination(destination_id: int) -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type,
+            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type, s.from_point,
                    b.name as bus_name, b.type as bus_type, d.name as destination_name, s.bus_id
             FROM schedules s
             JOIN buses b ON s.bus_id = b.id

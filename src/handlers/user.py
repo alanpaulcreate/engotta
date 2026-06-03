@@ -2,7 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from src.db import (
     get_destinations, get_destination_by_id, get_next_buses, 
-    get_schedule_details, is_date_holiday
+    get_schedule_details, is_date_holiday, get_distinct_from_points
 )
 from src.utils.time_helper import (
     get_local_now, get_current_time_24h, format_24h_to_12h, 
@@ -122,28 +122,78 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    # Parse destination ID
+    # Parse destination ID and from_point if present
+    # Format of query.data can be:
+    # "dest_<id>"
+    # "dest_<id>_from_<from_point>"
     data_parts = query.data.split("_")
     destination_id = int(data_parts[1])
     
+    from_point = None
+    if len(data_parts) >= 4 and data_parts[2] == "from":
+        from_point = "_".join(data_parts[3:])
+        
     dest_name = get_destination_by_id(destination_id)
     if not dest_name:
         await query.edit_message_text("Destination not found.", reply_markup=get_menu_keyboard())
         return
         
+    # If destination is Njarakkadu and starting point is not selected yet, show submenu
+    if dest_name == "Njarakkadu" and not from_point:
+        from_points = get_distinct_from_points(destination_id)
+        if not from_points:
+            text = (
+                f"📍 *{dest_name}*\n\n"
+                "❌ No scheduled buses found for today."
+            )
+            keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
+            await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+            return
+            
+        # Build sub list keyboard
+        keyboard = []
+        for fp in from_points:
+            keyboard.append([
+                InlineKeyboardButton(f"🚌 From {fp}", callback_data=f"dest_{destination_id}_from_{fp}")
+            ])
+        keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
+        
+        text = (
+            f"📍 *{dest_name}*\n\n"
+            "Select the starting bus stand for buses towards Njarakkad:"
+        )
+        await query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return
+
     now = get_local_now()
     current_time = now.strftime("%H:%M")
     day_type = get_day_type(now)
     
     # Fetch next buses (up to 4: 1 next bus + 3 upcoming)
-    next_schedules = get_next_buses(destination_id, current_time, day_type, limit=4)
+    next_schedules = get_next_buses(destination_id, current_time, day_type, limit=4, from_point=from_point)
     
+    display_title = dest_name
+    if from_point:
+        display_title += f" (From: {from_point})"
+
     if not next_schedules:
         text = (
-            f"📍 *{dest_name}*\n\n"
+            f"📍 *{display_title}*\n\n"
             "❌ No scheduled buses found for today."
         )
-        keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
+        # Back button
+        if dest_name == "Njarakkadu":
+            back_callback = f"dest_{destination_id}"
+            back_text = "🔙 Back to Origin Menu"
+        else:
+            back_callback = "menu_back"
+            back_text = "🔙 Back to Stop Menu"
+            
+        keyboard = [[InlineKeyboardButton(back_text, callback_data=back_callback)]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return
         
@@ -155,10 +205,15 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     wait_str = format_wait_time(wait_min)
     arrival_12h = format_24h_to_12h(next_bus["arrival_time"])
     
+    if dest_name == "Njarakkadu":
+        next_bus_str = f"{next_bus['bus_name']} ({next_bus['bus_type']})\n• *From:* {next_bus['from_point']}"
+    else:
+        next_bus_str = f"{next_bus['bus_name']} ({next_bus['bus_type']})"
+
     text = (
-        f"📍 *{dest_name}*\n\n"
+        f"📍 *{display_title}*\n\n"
         f"🚌 *Next Bus*\n"
-        f"{next_bus['bus_name']} ({next_bus['bus_type']})\n\n"
+        f"{next_bus_str}\n\n"
         f"🕒 *Arrival*\n"
         f"{arrival_12h}\n\n"
         f"⏳ *Waiting Time*\n"
@@ -169,7 +224,10 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         text += "\n*Upcoming Buses*\n\n"
         for bus in upcoming_buses:
             bus_arr_12h = format_24h_to_12h(bus["arrival_time"])
-            text += f"{bus_arr_12h} - {bus['bus_name']} ({bus['bus_type']})\n"
+            if dest_name == "Njarakkadu":
+                text += f"{bus_arr_12h} - {bus['bus_name']} ({bus['bus_type']}) [From: {bus['from_point']}]\n"
+            else:
+                text += f"{bus_arr_12h} - {bus['bus_name']} ({bus['bus_type']})\n"
             
     # Keyboard with buttons to view details for each bus listed
     keyboard = []
@@ -193,7 +251,10 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         ])
         
     # Back button
-    keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
+    if dest_name == "Njarakkadu":
+        keyboard.append([InlineKeyboardButton("🔙 Back to Origin Menu", callback_data=f"dest_{destination_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
     
     await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
 
@@ -218,7 +279,10 @@ async def available_now_callback(update: Update, context: ContextTypes.DEFAULT_T
         if next_schedules:
             next_bus = next_schedules[0]
             arr_12h = format_24h_to_12h(next_bus["arrival_time"])
-            text += f"{next_bus['bus_name']} - {arr_12h}\n\n"
+            if dest['name'] == "Njarakkadu":
+                text += f"{next_bus['bus_name']} [From: {next_bus['from_point']}] - {arr_12h}\n\n"
+            else:
+                text += f"{next_bus['bus_name']} - {arr_12h}\n\n"
             
             # Button for details
             keyboard.append([
@@ -259,6 +323,7 @@ async def route_details_callback(update: Update, context: ContextTypes.DEFAULT_T
         f"🚌 *Bus Details*\n\n"
         f"• *Bus Name:* {details['bus_name']}\n"
         f"• *Bus Type:* {details['bus_type']}\n"
+        f"• *From:* {details['from_point']}\n"
         f"• *Destination:* {details['destination_name']}\n"
         f"• *Arrival at Stop:* {arr_12h}\n"
         f"• *Journey Duration:* {duration} minutes\n"
@@ -266,12 +331,16 @@ async def route_details_callback(update: Update, context: ContextTypes.DEFAULT_T
     )
     
     # Back button to destination list or main menu
+    if details['destination_name'] == "Njarakkadu":
+        back_callback = f"dest_{details['destination_id']}_from_{details['from_point']}"
+        back_label = f"🔙 Back to {details['destination_name']} ({details['from_point']})"
+    else:
+        back_callback = f"dest_{details['destination_id']}"
+        back_label = f"🔙 Back to {details['destination_name']}"
+        
     keyboard = [
         [
-            InlineKeyboardButton(
-                f"🔙 Back to {details['destination_name']}", 
-                callback_data=f"dest_{details['destination_id']}"
-            )
+            InlineKeyboardButton(back_label, callback_data=back_callback)
         ],
         [InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]
     ]

@@ -15,13 +15,13 @@ from src.db import (
 # --- Conversation States ---
 
 # Add Bus states
-ADD_CHOOSE_DEST, ADD_ENTER_NAME, ADD_CHOOSE_TYPE, ADD_ENTER_TIME, ADD_ENTER_DURATION, ADD_CHOOSE_DAYTYPE = range(6)
+ADD_CHOOSE_DEST, ADD_ENTER_NAME, ADD_CHOOSE_TYPE, ADD_ENTER_TIME, ADD_ENTER_DURATION, ADD_ENTER_FROM, ADD_CHOOSE_DAYTYPE = range(7)
 
 # Edit Bus states
-EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD, EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_CHOOSE_DAYTYPE = range(6, 12)
+EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD, EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_ENTER_FROM, EDIT_CHOOSE_DAYTYPE = range(7, 14)
 
 # Delete Bus states
-DEL_CHOOSE_DEST, DEL_SELECT_SCHED, DEL_CONFIRM = range(12, 15)
+DEL_CHOOSE_DEST, DEL_SELECT_SCHED, DEL_CONFIRM = range(14, 17)
 
 
 # --- Authorization Helper ---
@@ -203,13 +203,52 @@ async def addbus_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return ADD_ENTER_DURATION
 
 async def addbus_enter_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Validates and saves journey duration, then prompts for schedule day type."""
+    """Validates and saves journey duration, then prompts for origin point (if Njarakkadu) or schedule day type."""
     duration_text = update.message.text.strip()
     if not duration_text.isdigit() or int(duration_text) <= 0:
         await update.message.reply_text("❌ Please enter a valid positive integer for minutes:")
         return ADD_ENTER_DURATION
         
     context.user_data["add_duration"] = int(duration_text)
+    dest_name = context.user_data.get("add_dest_name")
+    
+    if dest_name == "Njarakkadu":
+        await update.message.reply_text(
+            text=f"⏳ Duration: *{duration_text} minutes*\n\n💬 *Step 6/7*: Enter the *Origin Point* (starting bus stand, e.g. Muvattupuzha, Thodupuzha):",
+            parse_mode="Markdown"
+        )
+        return ADD_ENTER_FROM
+    else:
+        # Default starting point to Njarakkadu for other destinations
+        context.user_data["add_from_point"] = "Njarakkadu"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("Daily", callback_data="add_day_daily"),
+                InlineKeyboardButton("Weekday", callback_data="add_day_weekday")
+            ],
+            [
+                InlineKeyboardButton("Sunday Only", callback_data="add_day_sunday"),
+                InlineKeyboardButton("Holiday Only", callback_data="add_day_holiday")
+            ],
+            [InlineKeyboardButton("❌ Cancel", callback_data="add_cancel")]
+        ]
+        
+        await update.message.reply_text(
+            text=f"⏳ Duration: *{duration_text} minutes*\n\n💬 *Step 6/6*: Select active days for this schedule:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return ADD_CHOOSE_DAYTYPE
+
+async def addbus_enter_from(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves the origin point and prompts for schedule day type."""
+    from_pt = update.message.text.strip()
+    if not from_pt:
+        await update.message.reply_text("Origin point cannot be empty. Please enter the starting bus stand:")
+        return ADD_ENTER_FROM
+        
+    context.user_data["add_from_point"] = from_pt
     
     keyboard = [
         [
@@ -224,7 +263,7 @@ async def addbus_enter_duration(update: Update, context: ContextTypes.DEFAULT_TY
     ]
     
     await update.message.reply_text(
-        text=f"⏳ Duration: *{duration_text} minutes*\n\n💬 *Step 6/6*: Select active days for this schedule:",
+        text=f"📍 From: *{from_pt}*\n\n💬 *Step 7/7*: Select active days for this schedule:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -246,16 +285,18 @@ async def addbus_choose_daytype(update: Update, context: ContextTypes.DEFAULT_TY
     bus_type = context.user_data["add_bus_type"]
     arr_time = context.user_data["add_arr_time"]
     duration = context.user_data["add_duration"]
+    from_point = context.user_data.get("add_from_point", "Njarakkadu")
     
     try:
         # Write to SQLite
         bus_id = add_bus(bus_name, bus_type)
-        add_schedule(dest_id, bus_id, arr_time, duration, day_type)
+        add_schedule(dest_id, bus_id, arr_time, duration, day_type, from_point)
         
         success_msg = (
             "✅ *Schedule Added Successfully!*\n\n"
             f"• *Destination:* {dest_name}\n"
             f"• *Bus Name:* {bus_name} ({bus_type})\n"
+            f"• *From:* {from_point}\n"
             f"• *Arrival Time:* {arr_time}\n"
             f"• *Duration:* {duration} minutes\n"
             f"• *Active Schedule:* {day_type}\n"
@@ -308,9 +349,13 @@ async def editbus_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     keyboard = []
     for s in schedules:
+        label = f"[{s['arrival_time']}] {s['bus_name']}"
+        if dest_name == "Njarakkadu":
+            label += f" (From: {s['from_point']})"
+        label += f" ({s['day_type']})"
         keyboard.append([
             InlineKeyboardButton(
-                f"[{s['arrival_time']}] {s['bus_name']} ({s['day_type']})", 
+                label, 
                 callback_data=f"edit_sched_{s['schedule_id']}"
             )
         ])
@@ -351,9 +396,14 @@ async def editbus_select_sched(update: Update, context: ContextTypes.DEFAULT_TYP
         ],
         [
             InlineKeyboardButton(f"📅 Day Type ({details['day_type']})", callback_data="edit_field_daytype"),
-        ],
-        [InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")]
+        ]
     ]
+    if details["destination_name"] == "Njarakkadu":
+        keyboard.append([
+            InlineKeyboardButton(f"📍 From Point ({details['from_point']})", callback_data="edit_field_frompoint")
+        ])
+        
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
     
     text = (
         f"✏️ *Editing Bus:* {details['bus_name']} ({details['bus_type']})\n"
@@ -411,6 +461,12 @@ async def editbus_choose_field(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode="Markdown"
         )
         return EDIT_CHOOSE_DAYTYPE
+    elif field == "frompoint":
+        await query.edit_message_text(
+            text=f"📍 Current Origin Point: *{details['from_point']}*\n\n💬 Type the *new Origin Point* (e.g. Muvattupuzha):",
+            parse_mode="Markdown"
+        )
+        return EDIT_ENTER_FROM
         
     return ConversationHandler.END
 
@@ -426,7 +482,7 @@ async def editbus_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
     sched_id = context.user_data["edit_sched_id"]
     details = context.user_data["edit_details"]
     
-    update_schedule(sched_id, time_text, details["travel_duration"], details["day_type"])
+    update_schedule(sched_id, time_text, details["travel_duration"], details["day_type"], details["from_point"])
     
     await update.message.reply_text(f"✅ Schedule ID `{sched_id}` updated. Arrival time set to *{time_text}*.", parse_mode="Markdown")
     context.user_data.clear()
@@ -443,7 +499,7 @@ async def editbus_enter_duration(update: Update, context: ContextTypes.DEFAULT_T
     details = context.user_data["edit_details"]
     
     duration = int(duration_text)
-    update_schedule(sched_id, details["arrival_time"], duration, details["day_type"])
+    update_schedule(sched_id, details["arrival_time"], duration, details["day_type"], details["from_point"])
     
     await update.message.reply_text(f"✅ Schedule ID `{sched_id}` updated. Duration set to *{duration} minutes*.", parse_mode="Markdown")
     context.user_data.clear()
@@ -461,9 +517,25 @@ async def editbus_choose_daytype(update: Update, context: ContextTypes.DEFAULT_T
     sched_id = context.user_data["edit_sched_id"]
     details = context.user_data["edit_details"]
     
-    update_schedule(sched_id, details["arrival_time"], details["travel_duration"], day_type)
+    update_schedule(sched_id, details["arrival_time"], details["travel_duration"], day_type, details["from_point"])
     
     await query.edit_message_text(f"✅ Schedule ID `{sched_id}` updated. Day type set to *{day_type}*.", parse_mode="Markdown")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def editbus_enter_from(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves new origin point and commits update to database."""
+    from_pt = update.message.text.strip()
+    if not from_pt:
+        await update.message.reply_text("Origin point cannot be empty. Please enter the starting bus stand:")
+        return EDIT_ENTER_FROM
+        
+    sched_id = context.user_data["edit_sched_id"]
+    details = context.user_data["edit_details"]
+    
+    update_schedule(sched_id, details["arrival_time"], details["travel_duration"], details["day_type"], from_pt)
+    
+    await update.message.reply_text(f"✅ Schedule ID `{sched_id}` updated. Origin point set to *{from_pt}*.", parse_mode="Markdown")
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -507,9 +579,13 @@ async def deletebus_choose_dest(update: Update, context: ContextTypes.DEFAULT_TY
         
     keyboard = []
     for s in schedules:
+        label = f"[{s['arrival_time']}] {s['bus_name']}"
+        if dest_name == "Njarakkadu":
+            label += f" (From: {s['from_point']})"
+        label += f" (ID: {s['schedule_id']})"
         keyboard.append([
             InlineKeyboardButton(
-                f"🗑️ [{s['arrival_time']}] {s['bus_name']} (ID: {s['schedule_id']})", 
+                f"🗑️ {label}", 
                 callback_data=f"del_select_{s['schedule_id']}"
             )
         ])
