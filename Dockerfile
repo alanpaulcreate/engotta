@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY src/ ./src/
 COPY schema.sql .
+COPY assets/ ./assets/
 
 # Ensure data directory exists for SQLite
 RUN mkdir -p /app/data
