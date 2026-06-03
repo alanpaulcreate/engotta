@@ -99,7 +99,7 @@ engotta/
 ## 💾 Database Schema
 
 The database consists of 4 main tables:
-1. **`destinations`**: Keeps track of stops (seeding includes *Muvattupuzha*, *Kaliyar*, *Kothamangalam*, *Thodupuzha*).
+1. **`destinations`**: Keeps track of stops (seeding includes *Muvattupuzha*, *Kaliyar*, *Kothamangalam*, *Thodupuzha*, *Njarakkadu*).
 2. **`buses`**: Contains registered bus info and types (`KSRTC` or `Private`).
 3. **`schedules`**: Houses the actual timetable schedules.
    - `arrival_time`: Stored in 24h `HH:MM` format.

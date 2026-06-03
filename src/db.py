@@ -36,7 +36,7 @@ def seed_initial_data() -> None:
         cursor = conn.cursor()
         
         # 1. Seed Destinations
-        destinations = ["Muvattupuzha", "Kaliyar", "Kothamangalam", "Thodupuzha"]
+        destinations = ["Muvattupuzha", "Kaliyar", "Kothamangalam", "Thodupuzha", "Njarakkadu"]
         for dest in destinations:
             cursor.execute("INSERT OR IGNORE INTO destinations (name) VALUES (?)", (dest,))
             
