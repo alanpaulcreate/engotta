@@ -135,7 +135,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
     dest_name = get_destination_by_id(destination_id)
     if not dest_name:
-        await query.edit_message_text("Destination not found.", reply_markup=get_menu_keyboard())
+        await update_menu_message(query, context, "Destination not found.", get_menu_keyboard())
         return
         
     # If destination is Njarakkadu and starting point is not selected yet, show submenu
@@ -147,7 +147,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 "❌ No scheduled buses found for today."
             )
             keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
-            await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+            await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
             return
             
         # Build sub list keyboard
@@ -162,11 +162,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             f"📍 *{dest_name}*\n\n"
             "Select the starting bus stand for buses towards Njarakkad:"
         )
-        await query.edit_message_text(
-            text=text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
+        await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
         return
 
     now = get_local_now()
@@ -194,7 +190,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             back_text = "🔙 Back to Stop Menu"
             
         keyboard = [[InlineKeyboardButton(back_text, callback_data=back_callback)]]
-        await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
         return
         
     next_bus = next_schedules[0]
