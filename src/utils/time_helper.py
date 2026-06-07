@@ -1,6 +1,7 @@
 import datetime
 import pytz
-from typing import Tuple
+import re
+from typing import Tuple, Optional
 from src.config import TIMEZONE, logger
 
 def get_local_now() -> datetime.datetime:
@@ -83,3 +84,66 @@ def calculate_expected_arrival(arrival_time_str: str, duration_minutes: int) -> 
     arr_min = time_to_minutes(arrival_time_str)
     exp_min = (arr_min + duration_minutes) % (24 * 60)
     return minutes_to_time_str_24h(exp_min)
+
+def parse_user_time(time_str: str) -> Optional[str]:
+    """
+    Parses a user-entered time string in various formats and returns it in HH:MM (24-hour) format.
+    Returns None if parsing fails.
+    Formats supported:
+    - HH:MM (24h or 12h)
+    - HH.MM (24h or 12h)
+    - HH (24h or 12h)
+    - With or without AM/PM (case-insensitive, space optional)
+    """
+    time_str = time_str.strip().lower()
+    
+    # Normalize separator to ':' and remove spaces before am/pm
+    time_str = time_str.replace('.', ':')
+    time_str = re.sub(r'\s+(am|pm)', r'\1', time_str)
+    
+    # Try different formats
+    formats = [
+        "%H:%M",       # 14:30
+        "%I:%M%p",     # 2:30pm or 02:30pm
+        "%I:%M %p",    # 2:30 pm or 02:30 pm (safeguard)
+        "%H",          # 14
+        "%I%p",        # 2pm or 02pm
+        "%I %p",       # 2 pm or 02 pm
+    ]
+    
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(time_str, fmt)
+            return dt.strftime("%H:%M")
+        except ValueError:
+            continue
+            
+    # Try custom parsing if it is just a number with pm/am like "1030pm" or "1030"
+    match = re.match(r"^(\d{1,4})(am|pm)?$", time_str)
+    if match:
+        num_str = match.group(1)
+        ampm = match.group(2) or ""
+        
+        if len(num_str) <= 2:
+            hour = int(num_str)
+            minute = 0
+        elif len(num_str) == 3:
+            hour = int(num_str[0])
+            minute = int(num_str[1:])
+        elif len(num_str) == 4:
+            hour = int(num_str[:2])
+            minute = int(num_str[2:])
+        else:
+            return None
+            
+        if hour < 24 and minute < 60:
+            # Reconstruct as HH:MM am/pm
+            reconstructed = f"{hour:02d}:{minute:02d}{ampm}"
+            for fmt in ["%H:%M", "%I:%M%p"]:
+                try:
+                    dt = datetime.datetime.strptime(reconstructed, fmt)
+                    return dt.strftime("%H:%M")
+                except ValueError:
+                    continue
+                    
+    return None

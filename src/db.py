@@ -419,6 +419,28 @@ def get_schedules_by_destination(destination_id: int) -> List[Dict[str, Any]]:
         """, (destination_id,))
         return [dict(row) for row in cursor.fetchall()]
 
+def get_schedules_for_day(destination_id: int, day_type: str, from_point: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches all schedules for a destination and day type (including daily), sorted by arrival_time."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT s.id as schedule_id, s.arrival_time, s.travel_duration, s.day_type, s.from_point,
+                   b.name as bus_name, b.type as bus_type, d.name as destination_name, s.bus_id, s.destination_id
+            FROM schedules s
+            JOIN buses b ON s.bus_id = b.id
+            JOIN destinations d ON s.destination_id = d.id
+            WHERE s.destination_id = ?
+              AND (s.day_type = 'daily' OR s.day_type = ?)
+        """
+        params = [destination_id, day_type]
+        if from_point:
+            query += " AND s.from_point = ?"
+            params.append(from_point)
+            
+        query += " ORDER BY s.arrival_time ASC"
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
 # --- Holiday Operations ---
 
 def add_holiday(holiday_date: str) -> int:

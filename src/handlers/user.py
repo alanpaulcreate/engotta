@@ -1,12 +1,15 @@
+import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 from src.db import (
     get_destinations, get_destination_by_id, get_next_buses, 
-    get_schedule_details, is_date_holiday, get_distinct_from_points
+    get_schedule_details, is_date_holiday, get_distinct_from_points,
+    get_schedules_for_day
 )
 from src.utils.time_helper import (
     get_local_now, get_current_time_24h, format_24h_to_12h, 
-    calculate_wait_time_minutes, format_wait_time, calculate_expected_arrival
+    calculate_wait_time_minutes, format_wait_time, calculate_expected_arrival,
+    time_to_minutes, parse_user_time
 )
 from src.config import logger, BANNER_PATH
 
@@ -30,10 +33,13 @@ def get_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(f"📍 {dest['name']}", callback_data=f"dest_{dest['id']}")
         ])
         
-    # 2. Veyil app and Available Now feature buttons
+    # 2. Veyil, Available Now, and Reach by Time feature buttons
     keyboard.append([
-        InlineKeyboardButton("☀ Veyil", url="https://veyil.app"),
+        InlineKeyboardButton("⏱ Reach by Time", callback_data="reach_by_time"),
         InlineKeyboardButton("🚌 Available Now", callback_data="available_now")
+    ])
+    keyboard.append([
+        InlineKeyboardButton("☀ Veyil", url="https://veyil.app")
     ])
     
     return InlineKeyboardMarkup(keyboard)
@@ -325,7 +331,6 @@ async def route_details_callback(update: Update, context: ContextTypes.DEFAULT_T
         f"• *Journey Duration:* {duration} minutes\n"
         f"• *Expected Arrival:* {exp_12h}\n"
     )
-    
     # Back button to destination list or main menu
     if details['destination_name'] == "Njarakkadu":
         back_callback = f"dest_{details['destination_id']}_from_{details['from_point']}"
@@ -342,3 +347,292 @@ async def route_details_callback(update: Update, context: ContextTypes.DEFAULT_T
     ]
     
     await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
+
+# --- Reach Destination by Time Conversation States ---
+REACH_CHOOSE_DEST, REACH_CHOOSE_FROM, REACH_ENTER_TIME = range(3)
+
+async def reach_by_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the 'Reach by Time' search conversation by prompting destination."""
+    is_callback = update.callback_query is not None
+    if is_callback:
+        query = update.callback_query
+        await query.answer()
+        # Delete or edit. If it has a photo, start_command deletes it. We can delete it here to avoid photo conflicts.
+        if query.message and query.message.photo:
+            try:
+                await query.delete_message()
+            except Exception as e:
+                logger.warning(f"Could not delete message in reach_by_time_start: {e}")
+            message_sender = context.bot.send_message
+            target_chat_id = query.message.chat_id
+        else:
+            message_sender = query.edit_message_text
+            target_chat_id = None
+    else:
+        message_sender = update.message.reply_text
+        target_chat_id = None
+
+    context.user_data.clear()
+    destinations = get_destinations()
+    keyboard = []
+    for d in destinations:
+        keyboard.append([InlineKeyboardButton(d["name"], callback_data=f"reach_dest_{d['id']}")])
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")])
+    
+    text = "⏱ *Reach Destination by Time*\n\nSelect your destination stop:"
+    
+    if target_chat_id:
+        await message_sender(
+            chat_id=target_chat_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+    else:
+        await message_sender(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        
+    return REACH_CHOOSE_DEST
+
+async def reach_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves chosen destination. If Njarakkadu, prompts for starting point. Otherwise, prompts for target reach time."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "reach_cancel":
+        return await reach_cancel(update, context)
+        
+    dest_id = int(query.data.split("_")[2])
+    dest_name = get_destination_by_id(dest_id)
+    if not dest_name:
+        await start_command(update, context)
+        return ConversationHandler.END
+        
+    context.user_data["reach_dest_id"] = dest_id
+    context.user_data["reach_dest_name"] = dest_name
+    
+    if dest_name == "Njarakkadu":
+        from_points = get_distinct_from_points(dest_id)
+        if not from_points:
+            text = (
+                f"📍 *{dest_name}*\n\n"
+                "❌ No starting points found for this stop."
+            )
+            keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
+            await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+            context.user_data.clear()
+            return ConversationHandler.END
+            
+        keyboard = []
+        for fp in from_points:
+            keyboard.append([
+                InlineKeyboardButton(f"From {fp}", callback_data=f"reach_from_{dest_id}_{fp}")
+            ])
+        keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")])
+        
+        text = (
+            f"📍 *{dest_name}*\n\n"
+            "Select the starting bus stand for buses towards Njarakkad:"
+        )
+        await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return REACH_CHOOSE_FROM
+    else:
+        text = (
+            f"📍 Destination: *{dest_name}*\n\n"
+            "💬 Enter the time by which you need to reach (e.g. *10:30 AM* or *15:00*):"
+        )
+        keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+        await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return REACH_ENTER_TIME
+
+async def reach_choose_from(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves chosen origin point for Njarakkadu and prompts for target reach time."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "reach_cancel":
+        return await reach_cancel(update, context)
+        
+    parts = query.data.split("_")
+    # Format: reach_from_<dest_id>_<origin_point>
+    dest_id = int(parts[2])
+    from_point = "_".join(parts[3:])
+    
+    context.user_data["reach_dest_id"] = dest_id
+    context.user_data["reach_from_point"] = from_point
+    dest_name = context.user_data.get("reach_dest_name") or "Njarakkadu"
+    
+    text = (
+        f"📍 Destination: *{dest_name}* (From: *{from_point}*)\n\n"
+        "💬 Enter the time by which you need to reach (e.g. *10:30 AM* or *15:00*):"
+    )
+    keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return REACH_ENTER_TIME
+
+async def reach_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Validates target time, queries schedules, filters and sorts by reachability, and returns the result."""
+    text = update.message.text.strip()
+    
+    target_time_24h = parse_user_time(text)
+    if not target_time_24h:
+        keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+        await update.message.reply_text(
+            "❌ *Invalid time format.*\n\nPlease enter the time in formats like *10:30 AM*, *14:15*, or *3:00 PM*:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return REACH_ENTER_TIME
+
+    dest_id = context.user_data["reach_dest_id"]
+    dest_name = context.user_data["reach_dest_name"]
+    from_point = context.user_data.get("reach_from_point")
+
+    now = get_local_now()
+    current_time = now.strftime("%H:%M")
+    current_mins = time_to_minutes(current_time)
+    
+    target_mins = time_to_minutes(target_time_24h)
+    if target_time_24h < current_time:
+        target_mins += 24 * 60
+
+    today_day_type = get_day_type(now)
+    tomorrow = now + datetime.timedelta(days=1)
+    tomorrow_day_type = get_day_type(tomorrow)
+
+    matching_buses = []
+
+    # Check if target time spans midnight
+    if target_time_24h >= current_time:
+        # Same-day search
+        today_schedules = get_schedules_for_day(dest_id, today_day_type, from_point)
+        for s in today_schedules:
+            boarding_time = s["arrival_time"]
+            if boarding_time >= current_time:
+                boarding_mins = time_to_minutes(boarding_time)
+                expected_arrival_mins = boarding_mins + s["travel_duration"]
+                if expected_arrival_mins <= target_mins:
+                    expected_arrival_time = calculate_expected_arrival(boarding_time, s["travel_duration"])
+                    wait_minutes = boarding_mins - current_mins
+                    reach_diff = target_mins - expected_arrival_mins
+                    
+                    matching_buses.append({
+                        **s,
+                        "expected_arrival": expected_arrival_time,
+                        "wait_minutes": wait_minutes,
+                        "reach_diff": reach_diff,
+                        "is_tomorrow": False
+                    })
+    else:
+        # Spans midnight (target is tomorrow morning/afternoon)
+        # 1. Today's schedules departing after now
+        today_schedules = get_schedules_for_day(dest_id, today_day_type, from_point)
+        for s in today_schedules:
+            boarding_time = s["arrival_time"]
+            if boarding_time >= current_time:
+                boarding_mins = time_to_minutes(boarding_time)
+                expected_arrival_mins = boarding_mins + s["travel_duration"]
+                if expected_arrival_mins <= target_mins:
+                    expected_arrival_time = calculate_expected_arrival(boarding_time, s["travel_duration"])
+                    wait_minutes = boarding_mins - current_mins
+                    reach_diff = target_mins - expected_arrival_mins
+                    
+                    matching_buses.append({
+                        **s,
+                        "expected_arrival": expected_arrival_time,
+                        "wait_minutes": wait_minutes,
+                        "reach_diff": reach_diff,
+                        "is_tomorrow": False
+                    })
+                
+        # 2. Tomorrow's schedules departing and arriving before target_time
+        tomorrow_schedules = get_schedules_for_day(dest_id, tomorrow_day_type, from_point)
+        for s in tomorrow_schedules:
+            boarding_time = s["arrival_time"]
+            boarding_mins = time_to_minutes(boarding_time) + 24 * 60
+            expected_arrival_mins = boarding_mins + s["travel_duration"]
+            if expected_arrival_mins <= target_mins:
+                expected_arrival_time = calculate_expected_arrival(boarding_time, s["travel_duration"])
+                wait_minutes = boarding_mins - current_mins
+                reach_diff = target_mins - expected_arrival_mins
+                
+                matching_buses.append({
+                    **s,
+                    "expected_arrival": expected_arrival_time,
+                    "wait_minutes": wait_minutes,
+                    "reach_diff": reach_diff,
+                    "is_tomorrow": True
+                })
+
+    # Sort matching buses by reach difference ascending (nearest to target arrival time first)
+    # Secondary key: wait minutes descending (later boarding time is preferred if arrival is identical)
+    matching_buses.sort(key=lambda x: (x["reach_diff"], -x["wait_minutes"]))
+
+    target_time_12h = format_24h_to_12h(target_time_24h)
+    day_str = "today" if target_time_24h >= current_time else "tomorrow"
+    display_dest = dest_name
+    if from_point:
+        display_dest += f" (From: {from_point})"
+
+    keyboard = []
+
+    if not matching_buses:
+        text_out = (
+            f"⏱ *Reach {display_dest} by {target_time_12h} {day_str}*\n\n"
+            f"❌ No scheduled buses found that can be boarded after now and reach by this time."
+        )
+    else:
+        text_out = f"⏱ *Buses reaching {display_dest} by {target_time_12h} {day_str}:*\n\n"
+        # List top 8 buses to avoid message limit issues
+        for bus in matching_buses[:8]:
+            boarding_12h = format_24h_to_12h(bus["arrival_time"])
+            reach_12h = format_24h_to_12h(bus["expected_arrival"])
+            wait_str = format_wait_time(bus["wait_minutes"])
+            day_suffix = " (Tomorrow)" if bus["is_tomorrow"] else ""
+            
+            if dest_name == "Njarakkadu":
+                bus_detail = f"🚌 *{bus['bus_name']}* ({bus['bus_type']}) [From: {bus['from_point']}]"
+            else:
+                bus_detail = f"🚌 *{bus['bus_name']}* ({bus['bus_type']})"
+                
+            text_out += (
+                f"{bus_detail}\n"
+                f"• *Board:* {boarding_12h}{day_suffix} (in {wait_str})\n"
+                f"• *Reach:* {reach_12h}\n"
+                f"• *Journey:* {bus['travel_duration']} mins\n\n"
+            )
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"ℹ️ Info: {bus['bus_name']} ({boarding_12h})", 
+                    callback_data=f"route_{bus['schedule_id']}"
+                )
+            ])
+
+    keyboard.append([
+        InlineKeyboardButton("🔍 Search Again", callback_data="reach_by_time"),
+        InlineKeyboardButton("🔙 Stop Menu", callback_data="menu_back")
+    ])
+
+    await update.message.reply_text(
+        text=text_out,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def reach_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels search and returns to the main menu."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await start_command(update, context)
+    else:
+        await update.message.reply_text("⏹️ Search cancelled. Type /start to open the menu.")
+    context.user_data.clear()
+    return ConversationHandler.END

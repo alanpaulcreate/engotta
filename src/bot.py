@@ -7,7 +7,10 @@ from src.config import BOT_TOKEN, logger
 from src.db import init_db
 from src.handlers.user import (
     start_command, destination_callback, available_now_callback, 
-    route_details_callback
+    route_details_callback,
+    reach_by_time_start, reach_choose_dest, reach_choose_from, 
+    reach_enter_time, reach_cancel,
+    REACH_CHOOSE_DEST, REACH_CHOOSE_FROM, REACH_ENTER_TIME
 )
 from src.handlers.admin import (
     # Common actions
@@ -105,9 +108,37 @@ def main() -> None:
         per_message=False
     )
     
+    # Reach by Time Conversation
+    reach_by_time_conv = ConversationHandler(
+        entry_points=[
+            CommandHandler("reachbytime", reach_by_time_start),
+            CallbackQueryHandler(reach_by_time_start, pattern="^reach_by_time$")
+        ],
+        states={
+            REACH_CHOOSE_DEST: [
+                CallbackQueryHandler(reach_choose_dest, pattern="^reach_dest_\\d+$"),
+                CallbackQueryHandler(reach_cancel, pattern="^reach_cancel$")
+            ],
+            REACH_CHOOSE_FROM: [
+                CallbackQueryHandler(reach_choose_from, pattern="^reach_from_\\d+_.+$"),
+                CallbackQueryHandler(reach_cancel, pattern="^reach_cancel$")
+            ],
+            REACH_ENTER_TIME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, reach_enter_time),
+                CallbackQueryHandler(reach_cancel, pattern="^reach_cancel$")
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", reach_cancel),
+            CallbackQueryHandler(reach_cancel, pattern="^reach_cancel$")
+        ],
+        per_message=False
+    )
+    
     application.add_handler(addbus_conv)
     application.add_handler(editbus_conv)
     application.add_handler(deletebus_conv)
+    application.add_handler(reach_by_time_conv)
     
     # 4. Register Commands
     application.add_handler(CommandHandler("start", start_command))
