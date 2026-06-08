@@ -512,17 +512,25 @@ def add_schedule(destination_id: int, bus_id: int, arrival_time: str, travel_dur
         conn.commit()
         return cursor.lastrowid
 
-def update_schedule(schedule_id: int, arrival_time: str, travel_duration: int, day_type: str, from_point: str) -> bool:
-    """Updates timetable entry timings and metadata."""
+def update_schedule(schedule_id: int, arrival_time: str, travel_duration: int, day_type: str, from_point: str, bus_id: Optional[int] = None) -> bool:
+    """Updates timetable entry timings, metadata, and optionally the bus ID."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE schedules
-            SET arrival_time = ?, travel_duration = ?, day_type = ?, from_point = ?
-            WHERE id = ?
-        """, (arrival_time, travel_duration, day_type, from_point, schedule_id))
+        if bus_id is not None:
+            cursor.execute("""
+                UPDATE schedules
+                SET arrival_time = ?, travel_duration = ?, day_type = ?, from_point = ?, bus_id = ?
+                WHERE id = ?
+            """, (arrival_time, travel_duration, day_type, from_point, bus_id, schedule_id))
+        else:
+            cursor.execute("""
+                UPDATE schedules
+                SET arrival_time = ?, travel_duration = ?, day_type = ?, from_point = ?
+                WHERE id = ?
+            """, (arrival_time, travel_duration, day_type, from_point, schedule_id))
         conn.commit()
         return cursor.rowcount > 0
+
 
 def delete_schedule(schedule_id: int) -> bool:
     """Deletes a schedule entry by its ID."""

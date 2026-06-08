@@ -18,10 +18,10 @@ from src.db import (
 ADD_CHOOSE_DEST, ADD_ENTER_NAME, ADD_CHOOSE_TYPE, ADD_ENTER_TIME, ADD_ENTER_DURATION, ADD_ENTER_FROM, ADD_CHOOSE_DAYTYPE = range(7)
 
 # Edit Bus states
-EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD, EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_ENTER_FROM, EDIT_CHOOSE_DAYTYPE = range(7, 14)
+EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD, EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_ENTER_FROM, EDIT_CHOOSE_DAYTYPE, EDIT_ENTER_BUSNAME, EDIT_CHOOSE_BUSTYPE = range(7, 16)
 
 # Delete Bus states
-DEL_CHOOSE_DEST, DEL_SELECT_SCHED, DEL_CONFIRM = range(14, 17)
+DEL_CHOOSE_DEST, DEL_SELECT_SCHED, DEL_CONFIRM = range(16, 19)
 
 
 # --- Authorization Helper ---
@@ -389,6 +389,9 @@ async def editbus_select_sched(update: Update, context: ContextTypes.DEFAULT_TYP
     
     keyboard = [
         [
+            InlineKeyboardButton(f"🚌 Bus Name ({details['bus_name']})", callback_data="edit_field_busname"),
+        ],
+        [
             InlineKeyboardButton(f"🕒 Arrival Time ({details['arrival_time']})", callback_data="edit_field_time"),
         ],
         [
@@ -431,7 +434,13 @@ async def editbus_choose_field(update: Update, context: ContextTypes.DEFAULT_TYP
     
     details = context.user_data["edit_details"]
     
-    if field == "time":
+    if field == "busname":
+        await query.edit_message_text(
+            text=f"🚌 Current Bus Name: *{details['bus_name']}*\n\n💬 Type the *new Bus Name*:",
+            parse_mode="Markdown"
+        )
+        return EDIT_ENTER_BUSNAME
+    elif field == "time":
         await query.edit_message_text(
             text=f"🕒 Current Arrival Time: *{details['arrival_time']}*\n\n💬 Type the *new Arrival Time* (24-hour HH:MM format):",
             parse_mode="Markdown"
@@ -538,6 +547,63 @@ async def editbus_enter_from(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(f"✅ Schedule ID `{sched_id}` updated. Origin point set to *{from_pt}*.", parse_mode="Markdown")
     context.user_data.clear()
     return ConversationHandler.END
+
+async def editbus_enter_busname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves the new bus name and asks for Bus Type."""
+    bus_name = update.message.text.strip()
+    if not bus_name:
+        await update.message.reply_text("Bus name cannot be empty. Please type the bus name:")
+        return EDIT_ENTER_BUSNAME
+        
+    context.user_data["edit_bus_name"] = bus_name
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("Private", callback_data="edit_type_Private"),
+            InlineKeyboardButton("KSRTC", callback_data="edit_type_KSRTC")
+        ],
+        [InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")]
+    ]
+    
+    await update.message.reply_text(
+        text=f"🚌 New Bus Name: *{bus_name}*\n\n💬 Select the Bus Type:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return EDIT_CHOOSE_BUSTYPE
+
+async def editbus_choose_bustype(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves bus type, updates the bus ID of the schedule, and commits update to database."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "edit_cancel":
+        return await cancel(update, context)
+        
+    bus_type = query.data.split("_")[2]
+    sched_id = context.user_data["edit_sched_id"]
+    details = context.user_data["edit_details"]
+    bus_name = context.user_data["edit_bus_name"]
+    
+    try:
+        # Get or create new bus ID
+        bus_id = add_bus(bus_name, bus_type)
+        
+        # Update schedule with the new bus ID
+        update_schedule(sched_id, details["arrival_time"], details["travel_duration"], details["day_type"], details["from_point"], bus_id=bus_id)
+        
+        success_msg = (
+            f"✅ Schedule ID `{sched_id}` updated.\n\n"
+            f"• *New Bus Name:* {bus_name} ({bus_type})\n"
+        )
+        await query.edit_message_text(text=success_msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error updating bus name for schedule: {e}")
+        await query.edit_message_text(text=f"❌ Error updating bus name:\n`{e}`", parse_mode="Markdown")
+        
+    context.user_data.clear()
+    return ConversationHandler.END
+
 
 
 # --- Delete Schedule Conversation (/deletebus) ---

@@ -26,9 +26,10 @@ from src.handlers.admin import (
     # Editbus conversation
     editbus_start, editbus_choose_dest, editbus_select_sched,
     editbus_choose_field, editbus_enter_time, editbus_enter_duration,
-    editbus_enter_from, editbus_choose_daytype,
+    editbus_enter_from, editbus_choose_daytype, editbus_enter_busname, editbus_choose_bustype,
     EDIT_CHOOSE_DEST, EDIT_SELECT_SCHED, EDIT_CHOOSE_FIELD,
     EDIT_ENTER_TIME, EDIT_ENTER_DURATION, EDIT_ENTER_FROM, EDIT_CHOOSE_DAYTYPE,
+    EDIT_ENTER_BUSNAME, EDIT_CHOOSE_BUSTYPE,
     # Deletebus conversation
     deletebus_start, deletebus_choose_dest, deletebus_select_sched,
     deletebus_confirm,
@@ -85,6 +86,8 @@ def main() -> None:
             EDIT_ENTER_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_duration)],
             EDIT_ENTER_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_from)],
             EDIT_CHOOSE_DAYTYPE: [CallbackQueryHandler(editbus_choose_daytype, pattern="^edit_day_.*$|^edit_cancel$")],
+            EDIT_ENTER_BUSNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, editbus_enter_busname)],
+            EDIT_CHOOSE_BUSTYPE: [CallbackQueryHandler(editbus_choose_bustype, pattern="^edit_type_.*$|^edit_cancel$")],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
