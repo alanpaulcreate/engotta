@@ -29,6 +29,116 @@ def init_db(schema_path: str = "schema.sql") -> None:
     
     logger.info("Schema applied successfully. Seeding initial data...")
     seed_initial_data()
+    
+    # Run migrations
+    run_migrations()
+
+def run_migrations() -> None:
+    """Runs database migrations to update existing databases with new data/structures."""
+    logger.info("Running database migrations...")
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Create migrations table if it doesn't exist (in case schema.sql wasn't run)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        
+        # Check if thodupuzha migration has run
+        cursor.execute("SELECT 1 FROM migrations WHERE name = ?", ("seed_thodupuzha_schedules",))
+        if cursor.fetchone():
+            logger.info("Migration 'seed_thodupuzha_schedules' already applied.")
+            return
+
+        logger.info("Applying migration 'seed_thodupuzha_schedules'...")
+        
+        # Get destination IDs
+        cursor.execute("SELECT id, name FROM destinations")
+        dest_ids = {row["name"]: row["id"] for row in cursor.fetchall()}
+        
+        # Make sure Thodupuzha and Njarakkadu destinations exist
+        for dest in ["Thodupuzha", "Njarakkadu"]:
+            if dest not in dest_ids:
+                cursor.execute("INSERT OR IGNORE INTO destinations (name) VALUES (?)", (dest,))
+        
+        cursor.execute("SELECT id, name FROM destinations")
+        dest_ids = {row["name"]: row["id"] for row in cursor.fetchall()}
+        
+        # Make sure Thodupuzha (Service) bus exists
+        cursor.execute("SELECT id FROM buses WHERE name = ?", ("Thodupuzha (Service)",))
+        row = cursor.fetchone()
+        if row:
+            bus_id = row["id"]
+        else:
+            cursor.execute("INSERT INTO buses (name, type) VALUES (?, ?)", ("Thodupuzha (Service)", "Private"))
+            bus_id = cursor.lastrowid
+            
+        # Thodupuzha destination schedules (Njarakkadu -> Thodupuzha)
+        thodupuzha_schedules = [
+            ("05:35", 50, "daily"),
+            ("06:45", 50, "daily"),
+            ("07:40", 50, "daily"),
+            ("08:30", 50, "daily"),
+            ("08:50", 50, "daily"),
+            ("09:15", 50, "daily"),
+            ("10:05", 50, "daily"),
+            ("11:05", 50, "daily"),
+            ("12:05", 50, "daily"),
+            ("12:40", 50, "daily"),
+            ("13:15", 50, "daily"),
+            ("14:05", 50, "daily"),
+            ("14:50", 50, "daily"),
+            ("15:15", 50, "daily"),
+            ("15:50", 50, "daily"),
+            ("16:15", 50, "daily"),
+            ("17:05", 50, "daily"),
+            ("17:40", 50, "daily")
+        ]
+        
+        for arr_time, duration, day_type in thodupuzha_schedules:
+            cursor.execute("""
+                INSERT OR IGNORE INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type, from_point)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (dest_ids["Thodupuzha"], bus_id, arr_time, duration, day_type, "Njarakkadu"))
+            
+        # Njarakkadu destination schedules (Thodupuzha -> Njarakkadu)
+        thodupuzha_to_njarakkadu_schedules = [
+            ("07:35", 50, "daily"),
+            ("08:30", 50, "daily"),
+            ("09:20", 50, "daily"),
+            ("09:35", 50, "daily"),
+            ("10:00", 50, "daily"),
+            ("11:00", 50, "daily"),
+            ("11:55", 50, "daily"),
+            ("12:25", 50, "daily"),
+            ("12:55", 50, "daily"),
+            ("13:45", 50, "daily"),
+            ("14:10", 50, "daily"),
+            ("15:00", 50, "daily"),
+            ("15:30", 50, "daily"),
+            ("16:15", 50, "daily"),
+            ("16:30", 50, "daily"),
+            ("16:50", 50, "daily"),
+            ("17:55", 50, "daily"),
+            ("18:35", 50, "daily"),
+            ("19:15", 50, "daily")
+        ]
+        
+        for arr_time, duration, day_type in thodupuzha_to_njarakkadu_schedules:
+            cursor.execute("""
+                INSERT OR IGNORE INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type, from_point)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (dest_ids["Njarakkadu"], bus_id, arr_time, duration, day_type, "Thodupuzha"))
+            
+        # Record migration
+        cursor.execute("INSERT INTO migrations (name) VALUES (?)", ("seed_thodupuzha_schedules",))
+        conn.commit()
+        logger.info("Migration 'seed_thodupuzha_schedules' applied successfully.")
+
 
 def seed_initial_data() -> None:
     """Seeds the database with required destinations, buses, and new schedules from the user's timetable."""
@@ -189,6 +299,28 @@ def seed_initial_data() -> None:
             ("Sreekutty", "21:15", 50, "daily")
         ]
 
+        # Data for Thodupuzha (Towards Thodupuzha)
+        thodupuzha_schedules = [
+            ("Thodupuzha (Service)", "05:35", 50, "daily"),
+            ("Thodupuzha (Service)", "06:45", 50, "daily"),
+            ("Thodupuzha (Service)", "07:40", 50, "daily"),
+            ("Thodupuzha (Service)", "08:30", 50, "daily"),
+            ("Thodupuzha (Service)", "08:50", 50, "daily"),
+            ("Thodupuzha (Service)", "09:15", 50, "daily"),
+            ("Thodupuzha (Service)", "10:05", 50, "daily"),
+            ("Thodupuzha (Service)", "11:05", 50, "daily"),
+            ("Thodupuzha (Service)", "12:05", 50, "daily"),
+            ("Thodupuzha (Service)", "12:40", 50, "daily"),
+            ("Thodupuzha (Service)", "13:15", 50, "daily"),
+            ("Thodupuzha (Service)", "14:05", 50, "daily"),
+            ("Thodupuzha (Service)", "14:50", 50, "daily"),
+            ("Thodupuzha (Service)", "15:15", 50, "daily"),
+            ("Thodupuzha (Service)", "15:50", 50, "daily"),
+            ("Thodupuzha (Service)", "16:15", 50, "daily"),
+            ("Thodupuzha (Service)", "17:05", 50, "daily"),
+            ("Thodupuzha (Service)", "17:40", 50, "daily")
+        ]
+
         # Insert schedules
         for bus_name, arr_time, duration, day_type in muvattupuzha_schedules:
             cursor.execute(
@@ -207,6 +339,12 @@ def seed_initial_data() -> None:
                 "INSERT INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type) VALUES (?, ?, ?, ?, ?)",
                 (dest_ids["Kaliyar"], bus_ids[bus_name], arr_time, duration, day_type)
             )
+
+        for bus_name, arr_time, duration, day_type in thodupuzha_schedules:
+            cursor.execute(
+                "INSERT INTO schedules (destination_id, bus_id, arrival_time, travel_duration, day_type) VALUES (?, ?, ?, ?, ?)",
+                (dest_ids["Thodupuzha"], bus_ids[bus_name], arr_time, duration, day_type)
+            )
             
         # Data for Njarakkadu (Towards Njarakkadu, coming from different origin points)
         njarakkadu_schedules = [
@@ -217,7 +355,28 @@ def seed_initial_data() -> None:
             ("Meeras", "14:15", 50, "daily", "Thodupuzha"),
             ("Sreelakshmi", "16:30", 50, "daily", "Muvattupuzha"),
             ("Jeeva", "18:45", 50, "daily", "Kaliyar"),
-            ("Sreekutty", "20:00", 50, "daily", "Thodupuzha")
+            ("Sreekutty", "20:00", 50, "daily", "Thodupuzha"),
+            
+            # Thodupuzha -> Njarakkadu
+            ("Thodupuzha (Service)", "07:35", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "08:30", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "09:20", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "09:35", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "10:00", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "11:00", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "11:55", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "12:25", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "12:55", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "13:45", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "14:10", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "15:00", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "15:30", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "16:15", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "16:30", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "16:50", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "17:55", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "18:35", 50, "daily", "Thodupuzha"),
+            ("Thodupuzha (Service)", "19:15", 50, "daily", "Thodupuzha")
         ]
         
         for bus_name, arr_time, duration, day_type, from_pt in njarakkadu_schedules:
