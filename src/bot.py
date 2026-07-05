@@ -39,9 +39,17 @@ from src.handlers.admin import (
 )
 
 def main() -> None:
-    """Main function to initialize database and run the Telegram bot."""
-    if not BOT_TOKEN:
-        logger.critical("TELEGRAM_BOT_TOKEN is missing! Set it in your environment or .env file.")
+    """Main function to initialize database and run the bots."""
+    import os
+    telegram_enabled = os.getenv("TELEGRAM_ENABLED", "true").lower() in ("true", "1", "yes")
+    whatsapp_enabled = os.getenv("WHATSAPP_ENABLED", "false").lower() in ("true", "1", "yes")
+    
+    if telegram_enabled and not BOT_TOKEN:
+        logger.critical("TELEGRAM_BOT_TOKEN is missing! Set it in your environment or .env file, or set TELEGRAM_ENABLED=False.")
+        sys.exit(1)
+        
+    if not telegram_enabled and not whatsapp_enabled:
+        logger.critical("Both Telegram and WhatsApp bots are disabled! Set at least one to True.")
         sys.exit(1)
         
     # 1. Initialize SQLite Database (creates tables & seeds default timetable)
@@ -51,8 +59,15 @@ def main() -> None:
         logger.critical(f"Database initialization failed: {e}")
         sys.exit(1)
         
-    # 2. Build Telegram Application
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    if telegram_enabled:
+        # 2. Build Telegram Application
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+    else:
+        # Define a mock application so we don't need to wrap/indent the handler registrations
+        class DummyApplication:
+            def add_handler(self, *args, **kwargs):
+                pass
+        application = DummyApplication()
     
     # 3. Register Conversation Handlers for Admins
     
@@ -156,9 +171,23 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(route_details_callback, pattern="^route_\\d+$"))
     application.add_handler(CallbackQueryHandler(start_command, pattern="^menu_back$"))
     
-    # 6. Start the Bot
-    logger.info("Starting Telegram bot polling loop...")
-    application.run_polling()
+    # 6. Start WhatsApp / Telegram bots
+    port = int(os.getenv("PORT", 5000))
+    if whatsapp_enabled:
+        from src.whatsapp_bot import start_whatsapp_server
+        if telegram_enabled:
+            import threading
+            logger.info(f"Starting WhatsApp webhook server in background on port {port}...")
+            threading.Thread(target=start_whatsapp_server, kwargs={"port": port}, daemon=True).start()
+        else:
+            logger.info(f"Starting WhatsApp webhook server on port {port}...")
+            start_whatsapp_server(port=port)
+            return
+
+    # 7. Start the Telegram Bot
+    if telegram_enabled:
+        logger.info("Starting Telegram bot polling loop...")
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
