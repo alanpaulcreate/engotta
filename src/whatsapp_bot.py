@@ -179,11 +179,13 @@ def ping():
 @app.route("/download-db", methods=["GET"])
 def download_db():
     """Temporary endpoint to download the live SQLite database."""
-    from src.config import DATABASE_PATH
     import os
-    if os.path.exists(DATABASE_PATH):
-        return send_file(DATABASE_PATH, as_attachment=True)
-    return "Database file not found on server", 404
+    from pathlib import Path
+    # Resolve path relative to the project root (where bot is started from)
+    db_path = Path(os.getcwd()) / os.getenv("DATABASE_PATH", "data/database.db")
+    if db_path.exists():
+        return send_file(str(db_path), as_attachment=True, download_name="database.db")
+    return f"Database not found at: {db_path}", 404
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
