@@ -1,7 +1,7 @@
 import os
 import json
 import datetime
-from flask import Flask, request, Response
+from flask import Flask, request, Response, send_file
 from twilio.twiml.messaging_response import MessagingResponse
 
 from src.db import (
@@ -175,6 +175,15 @@ def format_bus_details(schedule_id: int) -> str:
 def ping():
     """Health check endpoint for keeping the bot awake."""
     return Response("OK", status=200)
+
+@app.route("/download-db", methods=["GET"])
+def download_db():
+    """Temporary endpoint to download the live SQLite database."""
+    from src.config import DATABASE_PATH
+    import os
+    if os.path.exists(DATABASE_PATH):
+        return send_file(DATABASE_PATH, as_attachment=True)
+    return "Database file not found on server", 404
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
