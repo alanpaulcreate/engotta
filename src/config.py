@@ -1,6 +1,5 @@
 import os
 import logging
-from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,7 +17,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
     logger.warning("TELEGRAM_BOT_TOKEN environment variable not set.")
 
-# Admin IDs parsing
+# Admin IDs
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 ADMIN_IDS = []
 for admin_id in ADMIN_IDS_STR.split(","):
@@ -26,9 +25,10 @@ for admin_id in ADMIN_IDS_STR.split(","):
     if admin_id.isdigit():
         ADMIN_IDS.append(int(admin_id))
 
-# Database Path
-DATABASE_PATH_STR = os.getenv("DATABASE_PATH", "data/database.db")
-DATABASE_PATH = Path(DATABASE_PATH_STR)
+# PostgreSQL Database URL
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    logger.warning("DATABASE_URL environment variable not set. Database operations will fail.")
 
 # Timezone (default is Asia/Kolkata for bus stops in Kerala, India)
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Kolkata")
