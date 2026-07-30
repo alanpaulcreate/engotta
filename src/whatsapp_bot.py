@@ -170,6 +170,12 @@ def format_bus_details(schedule_id: int) -> str:
     )
     return text
 
+@app.route("/", methods=["GET"])
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Health check endpoint for keeping the bot awake."""
+    return Response("OK", status=200)
+
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
     """Handles incoming Twilio WhatsApp requests."""
