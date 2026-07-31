@@ -110,12 +110,12 @@ async def addbus_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     destinations = get_destinations()
     keyboard = []
     dest_buttons = [
-        InlineKeyboardButton(f"🔴 {d['name']}", callback_data=f"add_dest_{d['id']}")
+        InlineKeyboardButton(d['name'], callback_data=f"add_dest_{d['id']}", api_kwargs={"style": "danger"})
         for d in destinations
     ]
     for i in range(0, len(dest_buttons), 2):
         keyboard.append(dest_buttons[i:i+2])
-    keyboard.append([InlineKeyboardButton("🔴 ❌ Cancel", callback_data="add_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="add_cancel", api_kwargs={"style": "primary"})])
     
     await update.message.reply_text(
         text="➕ *Add Timetable Entry* (Step 1/6)\n\nSelect the destination:",
@@ -324,12 +324,12 @@ async def editbus_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     destinations = get_destinations()
     keyboard = []
     dest_buttons = [
-        InlineKeyboardButton(f"🔴 {d['name']}", callback_data=f"edit_dest_{d['id']}")
+        InlineKeyboardButton(d['name'], callback_data=f"edit_dest_{d['id']}", api_kwargs={"style": "danger"})
         for d in destinations
     ]
     for i in range(0, len(dest_buttons), 2):
         keyboard.append(dest_buttons[i:i+2])
-    keyboard.append([InlineKeyboardButton("🔴 ❌ Cancel", callback_data="edit_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="edit_cancel", api_kwargs={"style": "primary"})])
     
     await update.message.reply_text(
         text="✏️ *Edit Timetable Entry*\n\nSelect the destination stop:",
@@ -624,12 +624,12 @@ async def deletebus_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     destinations = get_destinations()
     keyboard = []
     dest_buttons = [
-        InlineKeyboardButton(f"🔴 {d['name']}", callback_data=f"del_dest_{d['id']}")
+        InlineKeyboardButton(d['name'], callback_data=f"del_dest_{d['id']}", api_kwargs={"style": "danger"})
         for d in destinations
     ]
     for i in range(0, len(dest_buttons), 2):
         keyboard.append(dest_buttons[i:i+2])
-    keyboard.append([InlineKeyboardButton("🔴 ❌ Cancel", callback_data="del_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="del_cancel", api_kwargs={"style": "primary"})])
     
     await update.message.reply_text(
         text="🗑️ *Delete Timetable Entry*\n\nSelect the destination stop:",
