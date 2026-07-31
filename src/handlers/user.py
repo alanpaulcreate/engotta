@@ -23,23 +23,27 @@ def get_day_type(now) -> str:
     return "weekday"
 
 def get_menu_keyboard() -> InlineKeyboardMarkup:
-    """Helper to construct the main start menu inline keyboard dynamically."""
+    """Helper to construct the main start menu inline keyboard dynamically in 2 columns with Red/White/Dark theme accents."""
     destinations = get_destinations()
     keyboard = []
     
-    # 1. Destinations as primary buttons
-    for dest in destinations:
-        keyboard.append([
-            InlineKeyboardButton(f"📍 {dest['name']}", callback_data=f"dest_{dest['id']}")
-        ])
+    # 1. Destinations as primary buttons (2 columns with Red accent)
+    dest_buttons = [
+        InlineKeyboardButton(f"🔴 {dest['name']}", callback_data=f"dest_{dest['id']}")
+        for dest in destinations
+    ]
+    for i in range(0, len(dest_buttons), 2):
+        keyboard.append(dest_buttons[i:i+2])
         
-    # 2. Veyil, Available Now, and Reach by Time feature buttons
+    # 2. Feature buttons (White accent)
     keyboard.append([
-        InlineKeyboardButton("⏱ Reach by Time", callback_data="reach_by_time"),
-        InlineKeyboardButton("🚌 Available Now", callback_data="available_now")
+        InlineKeyboardButton("⚪️ ⏱ Reach by Time", callback_data="reach_by_time"),
+        InlineKeyboardButton("⚪️ 🚌 Available Now", callback_data="available_now")
     ])
+    
+    # 3. External links / App (Dark accent)
     keyboard.append([
-        InlineKeyboardButton("☀ Veyil", url="https://veyil.app")
+        InlineKeyboardButton("⬛ ☀ Veyil App", url="https://veyil.app")
     ])
     
     return InlineKeyboardMarkup(keyboard)
@@ -156,13 +160,15 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
             return
             
-        # Build sub list keyboard
+        # Build sub list keyboard (2 columns)
+        from_buttons = [
+            InlineKeyboardButton(f"🔴 From {fp}", callback_data=f"dest_{destination_id}_from_{fp}")
+            for fp in from_points
+        ]
         keyboard = []
-        for fp in from_points:
-            keyboard.append([
-                InlineKeyboardButton(f"🚌 From {fp}", callback_data=f"dest_{destination_id}_from_{fp}")
-            ])
-        keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
+        for i in range(0, len(from_buttons), 2):
+            keyboard.append(from_buttons[i:i+2])
+        keyboard.append([InlineKeyboardButton("⬛ 🔙 Back to Stop Menu", callback_data="menu_back")])
         
         text = (
             f"📍 *{dest_name}*\n\n"
@@ -252,11 +258,11 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         ])
         
-    # Back button
+    # Back button (Dark accent)
     if dest_name == "Njarakkadu":
-        keyboard.append([InlineKeyboardButton("🔙 Back to Origin Menu", callback_data=f"dest_{destination_id}")])
+        keyboard.append([InlineKeyboardButton("⬛ 🔙 Back to Origin Menu", callback_data=f"dest_{destination_id}")])
     else:
-        keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
+        keyboard.append([InlineKeyboardButton("⬛ 🔙 Back to Stop Menu", callback_data="menu_back")])
     
     await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
 
@@ -375,9 +381,13 @@ async def reach_by_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.clear()
     destinations = get_destinations()
     keyboard = []
-    for d in destinations:
-        keyboard.append([InlineKeyboardButton(d["name"], callback_data=f"reach_dest_{d['id']}")])
-    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")])
+    dest_buttons = [
+        InlineKeyboardButton(f"🔴 {d['name']}", callback_data=f"reach_dest_{d['id']}")
+        for d in destinations
+    ]
+    for i in range(0, len(dest_buttons), 2):
+        keyboard.append(dest_buttons[i:i+2])
+    keyboard.append([InlineKeyboardButton("🔴 ❌ Cancel", callback_data="reach_cancel")])
     
     text = "⏱ *Reach Destination by Time*\n\nSelect your destination stop:"
     
@@ -426,12 +436,14 @@ async def reach_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             context.user_data.clear()
             return ConversationHandler.END
             
+        from_buttons = [
+            InlineKeyboardButton(f"🔴 From {fp}", callback_data=f"reach_from_{dest_id}_{fp}")
+            for fp in from_points
+        ]
         keyboard = []
-        for fp in from_points:
-            keyboard.append([
-                InlineKeyboardButton(f"From {fp}", callback_data=f"reach_from_{dest_id}_{fp}")
-            ])
-        keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")])
+        for i in range(0, len(from_buttons), 2):
+            keyboard.append(from_buttons[i:i+2])
+        keyboard.append([InlineKeyboardButton("🔴 ❌ Cancel", callback_data="reach_cancel")])
         
         text = (
             f"📍 *{dest_name}*\n\n"
@@ -613,8 +625,8 @@ async def reach_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             ])
 
     keyboard.append([
-        InlineKeyboardButton("🔍 Search Again", callback_data="reach_by_time"),
-        InlineKeyboardButton("🔙 Stop Menu", callback_data="menu_back")
+        InlineKeyboardButton("⚪️ 🔍 Search Again", callback_data="reach_by_time"),
+        InlineKeyboardButton("⬛ 🔙 Stop Menu", callback_data="menu_back")
     ])
 
     await update.message.reply_text(

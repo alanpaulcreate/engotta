@@ -5,8 +5,9 @@ from flask import Flask, request, Response, send_file
 from twilio.twiml.messaging_response import MessagingResponse
 
 from src.db import (
-    get_destinations, get_destination_by_id, get_next_buses, 
-    get_schedule_details, get_distinct_from_points, get_schedules_for_day
+    get_destinations, get_destination_by_id, get_next_buses,
+    get_schedule_details, get_distinct_from_points, get_schedules_for_day,
+    get_schedules_by_bus_name_search
 )
 from src.utils.time_helper import (
     get_local_now, format_24h_to_12h, calculate_wait_time_minutes, 
@@ -35,6 +36,7 @@ STATE_VIEWING_BUSES = "VIEWING_BUSES"
 STATE_REACH_SELECT_DEST = "REACH_SELECT_DEST"
 STATE_REACH_SELECT_NJARAKKADU_FROM = "REACH_SELECT_NJARAKKADU_FROM"
 STATE_REACH_ENTER_TIME = "REACH_ENTER_TIME"
+STATE_SEARCH_BUS_NAME = "SEARCH_BUS_NAME"
 
 def get_main_menu_text() -> str:
     """Constructs the welcome and main menu text dynamically based on configured destinations."""
@@ -52,10 +54,12 @@ def get_main_menu_text() -> str:
     reach_idx = len(destinations) + 1
     avail_idx = len(destinations) + 2
     veyil_idx = len(destinations) + 3
+    search_idx = len(destinations) + 4
     
     text += f"{reach_idx}️⃣ ⏱ Reach by Time\n"
     text += f"{avail_idx}️⃣ 🚌 Available Now\n"
-    text += f"{veyil_idx}️⃣ ☀ Veyil\n\n"
+    text += f"{veyil_idx}️⃣ ☀ Veyil\n"
+    text += f"{search_idx}️⃣ 🔍 Search Bus by Name\n\n"
     text += "_You can send \"menu\" or \"start\" at any time to return here._"
     return text
 
@@ -246,6 +250,7 @@ def whatsapp_webhook():
         reach_idx = len(destinations) + 1
         avail_idx = len(destinations) + 2
         veyil_idx = len(destinations) + 3
+        search_idx = len(destinations) + 4
         
         # Check choice
         if dest_match or (1 <= choice_idx <= len(destinations)):
@@ -290,7 +295,16 @@ def whatsapp_webhook():
             
         elif choice_idx == veyil_idx or "veyil" in norm_body:
             reply_text = "☀ Veyil app is available at: https://veyil.app\n\nReply *0* or *menu* to return to the main menu."
-            
+
+        elif choice_idx == search_idx or "search" in norm_body or "bus name" in norm_body:
+            # Search Bus by Name
+            next_state = STATE_SEARCH_BUS_NAME
+            reply_text = (
+                "🔍 *Search Bus by Name*\n\n"
+                "Type the bus name (or part of it) and I'll show you its upcoming trips for today.\n\n"
+                "_Reply *0* or *menu* to return to the main menu._"
+            )
+
         else:
             reply_text = "⚠️ Invalid option. Please select a valid number from the menu (or send *menu* to see it again)."
             
@@ -539,7 +553,60 @@ def whatsapp_webhook():
                         "from_point": from_point
                     }
                     
+    elif state == STATE_SEARCH_BUS_NAME:
+        if body == "0":
+            next_state = STATE_MAIN_MENU
+            next_context = {}
+            reply_text = get_main_menu_text()
+        else:
+            # Search by bus name (partial, case-insensitive)
+            now = get_local_now()
+            current_time = now.strftime("%H:%M")
+            day_type = get_day_type(now)
+
+            results = get_schedules_by_bus_name_search(body, day_type, current_time)
+
+            if not results:
+                reply_text = (
+                    f"🔍 No upcoming buses matching *\"{body}\"* found for today.\n\n"
+                    "Try a different name, or reply *0* or *menu* to return to the main menu."
+                )
+                # Stay in SEARCH_BUS_NAME so the user can try another query
+            else:
+                reply_text = f"🔍 *Results for \"{body}\":*\n\n"
+                schedules_stored = []
+
+                for idx, s in enumerate(results[:8], 1):
+                    arr_12h = format_24h_to_12h(s["arrival_time"])
+                    wait_m = calculate_wait_time_minutes(current_time, s["arrival_time"])
+                    wait_str = format_wait_time(wait_m)
+                    schedules_stored.append(s["schedule_id"])
+                    emoji = f"{idx}️⃣"
+
+                    if s.get("from_point") and s["from_point"] != "Njarakkadu":
+                        from_str = f" [From: {s['from_point']}]"
+                    else:
+                        from_str = ""
+
+                    reply_text += (
+                        f"{emoji} *{s['bus_name']}* ({s['bus_type']}){from_str}\n"
+                        f"• *To:* {s['destination_name']}\n"
+                        f"• *Arrives:* {arr_12h} (in {wait_str})\n\n"
+                    )
+
+                reply_text += (
+                    f"Reply with a number (1-{len(schedules_stored)}) to view full details.\n"
+                    "Reply *0* or *menu* to return to the main menu."
+                )
+                next_state = STATE_VIEWING_BUSES
+                next_context = {
+                    "schedules": schedules_stored,
+                    "dest_id": results[0].get("destination_id"),
+                    "dest_name": results[0]["destination_name"],
+                }
+
     # Save the updated session state
+
     save_whatsapp_session(phone_number, next_state, next_context)
     
     twiml = MessagingResponse()

@@ -481,3 +481,37 @@ def get_all_holidays() -> List[str]:
         with conn.cursor() as cur:
             cur.execute("SELECT holiday_date::text FROM holidays ORDER BY holiday_date ASC")
             return [row["holiday_date"] for row in cur.fetchall()]
+
+
+def get_schedules_by_bus_name_search(
+    bus_name: str, day_type: str, current_time: str
+) -> List[Dict[str, Any]]:
+    """Retrieves upcoming schedules for buses whose name partially matches bus_name.
+
+    Matches are case-insensitive (ILIKE). Results include 'daily' schedules and
+    schedules specific to the given day_type, filtered to arrival_time >= current_time.
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.id            AS schedule_id,
+                    s.arrival_time::text  AS arrival_time,
+                    s.travel_duration,
+                    s.day_type,
+                    s.from_point,
+                    b.name          AS bus_name,
+                    b.type          AS bus_type,
+                    d.name          AS destination_name
+                FROM schedules s
+                JOIN buses b ON s.bus_id = b.id
+                JOIN destinations d ON s.destination_id = d.id
+                WHERE b.name ILIKE %s
+                  AND s.day_type IN ('daily', %s)
+                  AND s.arrival_time::text >= %s
+                ORDER BY s.arrival_time ASC
+                """,
+                (f"%{bus_name}%", day_type, current_time),
+            )
+            return [dict(row) for row in cur.fetchall()]

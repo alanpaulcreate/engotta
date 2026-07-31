@@ -52,12 +52,11 @@ def main() -> None:
         logger.critical("Both Telegram and WhatsApp bots are disabled! Set at least one to True.")
         sys.exit(1)
         
-    # 1. Initialize SQLite Database (creates tables & seeds default timetable)
+    # 1. Initialize Database (creates tables if needed)
     try:
         init_db()
     except Exception as e:
-        logger.critical(f"Database initialization failed: {e}")
-        sys.exit(1)
+        logger.error(f"Database initialization warning: {e}")
         
     if telegram_enabled:
         # 2. Build Telegram Application
@@ -171,23 +170,19 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(route_details_callback, pattern="^route_\\d+$"))
     application.add_handler(CallbackQueryHandler(start_command, pattern="^menu_back$"))
     
-    # 6. Start WhatsApp / Telegram bots
+    # 6. Always start HTTP server (Flask) for health checks (/ping) and webhooks
     port = int(os.getenv("PORT", 5000))
-    if whatsapp_enabled:
-        from src.whatsapp_bot import start_whatsapp_server
-        if telegram_enabled:
-            import threading
-            logger.info(f"Starting WhatsApp webhook server in background on port {port}...")
-            threading.Thread(target=start_whatsapp_server, kwargs={"port": port}, daemon=True).start()
-        else:
-            logger.info(f"Starting WhatsApp webhook server on port {port}...")
-            start_whatsapp_server(port=port)
-            return
-
-    # 7. Start the Telegram Bot
+    from src.whatsapp_bot import start_whatsapp_server
     if telegram_enabled:
+        import threading
+        logger.info(f"Starting HTTP server in background thread on port {port}...")
+        threading.Thread(target=start_whatsapp_server, kwargs={"port": port}, daemon=True).start()
         logger.info("Starting Telegram bot polling loop...")
         application.run_polling()
+    else:
+        logger.info(f"Starting HTTP server on port {port}...")
+        start_whatsapp_server(port=port)
+
 
 if __name__ == "__main__":
     main()
