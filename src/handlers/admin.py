@@ -154,10 +154,10 @@ async def addbus_enter_name(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     keyboard = [
         [
-            InlineKeyboardButton("Private", callback_data="add_type_Private"),
-            InlineKeyboardButton("KSRTC", callback_data="add_type_KSRTC")
+            InlineKeyboardButton("Private", callback_data="add_type_Private", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("KSRTC", callback_data="add_type_KSRTC", api_kwargs={"style": "success"})
         ],
-        [InlineKeyboardButton("❌ Cancel", callback_data="add_cancel")]
+        [InlineKeyboardButton("Cancel", callback_data="add_cancel", api_kwargs={"style": "primary"})]
     ]
     
     await update.message.reply_text(
@@ -228,14 +228,14 @@ async def addbus_enter_duration(update: Update, context: ContextTypes.DEFAULT_TY
         
         keyboard = [
             [
-                InlineKeyboardButton("Daily", callback_data="add_day_daily"),
-                InlineKeyboardButton("Weekday", callback_data="add_day_weekday")
+                InlineKeyboardButton("Daily", callback_data="add_day_daily", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("Weekday", callback_data="add_day_weekday", api_kwargs={"style": "success"})
             ],
             [
-                InlineKeyboardButton("Sunday Only", callback_data="add_day_sunday"),
-                InlineKeyboardButton("Holiday Only", callback_data="add_day_holiday")
+                InlineKeyboardButton("Sunday Only", callback_data="add_day_sunday", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("Holiday Only", callback_data="add_day_holiday", api_kwargs={"style": "success"})
             ],
-            [InlineKeyboardButton("❌ Cancel", callback_data="add_cancel")]
+            [InlineKeyboardButton("Cancel", callback_data="add_cancel", api_kwargs={"style": "primary"})]
         ]
         
         await update.message.reply_text(
@@ -256,14 +256,14 @@ async def addbus_enter_from(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     keyboard = [
         [
-            InlineKeyboardButton("Daily", callback_data="add_day_daily"),
-            InlineKeyboardButton("Weekday", callback_data="add_day_weekday")
+            InlineKeyboardButton("Daily", callback_data="add_day_daily", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("Weekday", callback_data="add_day_weekday", api_kwargs={"style": "success"})
         ],
         [
-            InlineKeyboardButton("Sunday Only", callback_data="add_day_sunday"),
-            InlineKeyboardButton("Holiday Only", callback_data="add_day_holiday")
+            InlineKeyboardButton("Sunday Only", callback_data="add_day_sunday", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("Holiday Only", callback_data="add_day_holiday", api_kwargs={"style": "success"})
         ],
-        [InlineKeyboardButton("❌ Cancel", callback_data="add_cancel")]
+        [InlineKeyboardButton("Cancel", callback_data="add_cancel", api_kwargs={"style": "primary"})]
     ]
     
     await update.message.reply_text(
@@ -367,7 +367,7 @@ async def editbus_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE
                 callback_data=f"edit_sched_{s['schedule_id']}"
             )
         ])
-    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="edit_cancel", api_kwargs={"style": "primary"})])
     
     await query.edit_message_text(
         text=f"📍 Destination: *{dest_name}*\n\nSelect the schedule to edit:",
@@ -414,7 +414,7 @@ async def editbus_select_sched(update: Update, context: ContextTypes.DEFAULT_TYP
             InlineKeyboardButton(f"📍 From Point ({details['from_point']})", callback_data="edit_field_frompoint")
         ])
         
-    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="edit_cancel", api_kwargs={"style": "primary"})])
     
     text = (
         f"✏️ *Editing Bus:* {details['bus_name']} ({details['bus_type']})\n"
@@ -463,14 +463,14 @@ async def editbus_choose_field(update: Update, context: ContextTypes.DEFAULT_TYP
     elif field == "daytype":
         keyboard = [
             [
-                InlineKeyboardButton("Daily", callback_data="edit_day_daily"),
-                InlineKeyboardButton("Weekday", callback_data="edit_day_weekday")
+                InlineKeyboardButton("Daily", callback_data="edit_day_daily", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("Weekday", callback_data="edit_day_weekday", api_kwargs={"style": "success"})
             ],
             [
-                InlineKeyboardButton("Sunday Only", callback_data="edit_day_sunday"),
-                InlineKeyboardButton("Holiday Only", callback_data="edit_day_holiday")
+                InlineKeyboardButton("Sunday Only", callback_data="edit_day_sunday", api_kwargs={"style": "success"}),
+                InlineKeyboardButton("Holiday Only", callback_data="edit_day_holiday", api_kwargs={"style": "success"})
             ],
-            [InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")]
+            [InlineKeyboardButton("Cancel", callback_data="edit_cancel", api_kwargs={"style": "primary"})]
         ]
         await query.edit_message_text(
             text=f"📅 Current Day Type: *{details['day_type']}*\n\nSelect the *new Day Type*:",
@@ -567,10 +567,10 @@ async def editbus_enter_busname(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = [
         [
-            InlineKeyboardButton("Private", callback_data="edit_type_Private"),
-            InlineKeyboardButton("KSRTC", callback_data="edit_type_KSRTC")
+            InlineKeyboardButton("Private", callback_data="edit_type_Private", api_kwargs={"style": "success"}),
+            InlineKeyboardButton("KSRTC", callback_data="edit_type_KSRTC", api_kwargs={"style": "success"})
         ],
-        [InlineKeyboardButton("❌ Cancel", callback_data="edit_cancel")]
+        [InlineKeyboardButton("Cancel", callback_data="edit_cancel", api_kwargs={"style": "primary"})]
     ]
     
     await update.message.reply_text(
@@ -667,7 +667,7 @@ async def deletebus_choose_dest(update: Update, context: ContextTypes.DEFAULT_TY
                 callback_data=f"del_select_{s['schedule_id']}"
             )
         ])
-    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="del_cancel")])
+    keyboard.append([InlineKeyboardButton("Cancel", callback_data="del_cancel", api_kwargs={"style": "primary"})])
     
     await query.edit_message_text(
         text=f"📍 Destination: *{dest_name}*\n\nSelect the schedule to delete:",
@@ -695,8 +695,8 @@ async def deletebus_select_sched(update: Update, context: ContextTypes.DEFAULT_T
         
     keyboard = [
         [
-            InlineKeyboardButton("✅ Yes, Delete", callback_data="del_confirm_yes"),
-            InlineKeyboardButton("❌ No, Cancel", callback_data="del_cancel")
+            InlineKeyboardButton("Yes, Delete", callback_data="del_confirm_yes", api_kwargs={"style": "danger"}),
+            InlineKeyboardButton("No, Cancel", callback_data="del_cancel", api_kwargs={"style": "primary"})
         ]
     ]
     

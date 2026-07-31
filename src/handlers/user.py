@@ -27,7 +27,7 @@ def get_menu_keyboard() -> InlineKeyboardMarkup:
     destinations = get_destinations()
     keyboard = []
     
-    # 1. Destinations as primary buttons (2 columns, styled with 'danger' red layout)
+    # Destinations: 2 columns, red (danger)
     dest_buttons = [
         InlineKeyboardButton(dest['name'], callback_data=f"dest_{dest['id']}", api_kwargs={"style": "danger"})
         for dest in destinations
@@ -35,13 +35,13 @@ def get_menu_keyboard() -> InlineKeyboardMarkup:
     for i in range(0, len(dest_buttons), 2):
         keyboard.append(dest_buttons[i:i+2])
         
-    # 2. Feature buttons (styled with 'primary' dark blue layout)
+    # Feature buttons: green (success)
     keyboard.append([
-        InlineKeyboardButton("Reach by Time", callback_data="reach_by_time", api_kwargs={"style": "primary"}),
-        InlineKeyboardButton("Available Now", callback_data="available_now", api_kwargs={"style": "primary"})
+        InlineKeyboardButton("Reach by Time", callback_data="reach_by_time", api_kwargs={"style": "success"}),
+        InlineKeyboardButton("Available Now", callback_data="available_now", api_kwargs={"style": "success"})
     ])
     keyboard.append([
-        InlineKeyboardButton("🔍 Search Bus by Name", callback_data="search_bus", api_kwargs={"style": "primary"}),
+        InlineKeyboardButton("🔍 Search Bus by Name", callback_data="search_bus", api_kwargs={"style": "success"}),
         InlineKeyboardButton("Veyil App", url="https://veyil.app")
     ])
     
@@ -155,7 +155,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"📍 *{dest_name}*\n\n"
                 "❌ No scheduled buses found for today."
             )
-            keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
+            keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})]]
             await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
             return
             
@@ -200,7 +200,7 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             back_callback = "menu_back"
             back_text = "🔙 Back to Stop Menu"
             
-        keyboard = [[InlineKeyboardButton(back_text, callback_data=back_callback)]]
+        keyboard = [[InlineKeyboardButton("Back to Menu", callback_data=back_callback, api_kwargs={"style": "primary"})]]
         await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
         return
         
@@ -242,8 +242,9 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # Button for the next bus details
     keyboard.append([
         InlineKeyboardButton(
-            f"ℹ️ Info: {next_bus['bus_name']} ({arrival_12h})", 
-            callback_data=f"route_{next_bus['schedule_id']}"
+            f"Info: {next_bus['bus_name']} ({arrival_12h})",
+            callback_data=f"route_{next_bus['schedule_id']}",
+            api_kwargs={"style": "success"}
         )
     ])
     
@@ -252,8 +253,9 @@ async def destination_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         bus_arr_12h = format_24h_to_12h(bus["arrival_time"])
         keyboard.append([
             InlineKeyboardButton(
-                f"ℹ️ Info: {bus['bus_name']} ({bus_arr_12h})", 
-                callback_data=f"route_{bus['schedule_id']}"
+                f"Info: {bus['bus_name']} ({bus_arr_12h})",
+                callback_data=f"route_{bus['schedule_id']}",
+                api_kwargs={"style": "success"}
             )
         ])
         
@@ -294,14 +296,15 @@ async def available_now_callback(update: Update, context: ContextTypes.DEFAULT_T
             # Button for details
             keyboard.append([
                 InlineKeyboardButton(
-                    f"ℹ️ {dest['name']}: {next_bus['bus_name']}", 
-                    callback_data=f"route_{next_bus['schedule_id']}"
+                    f"Info: {dest['name']}: {next_bus['bus_name']}",
+                    callback_data=f"route_{next_bus['schedule_id']}",
+                    api_kwargs={"style": "success"}
                 )
             ])
         else:
             text += "No schedules today\n\n"
             
-    keyboard.append([InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")])
+    keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})])
     
     await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
 
@@ -346,9 +349,9 @@ async def route_details_callback(update: Update, context: ContextTypes.DEFAULT_T
         
     keyboard = [
         [
-            InlineKeyboardButton(back_label, callback_data=back_callback)
+            InlineKeyboardButton(f"Back to {back_label.replace('🔙 Back to ', '')}", callback_data=back_callback, api_kwargs={"style": "primary"})
         ],
-        [InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]
+        [InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})]
     ]
     
     await update_menu_message(query, context, text, InlineKeyboardMarkup(keyboard))
@@ -430,7 +433,7 @@ async def reach_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 f"📍 *{dest_name}*\n\n"
                 "❌ No starting points found for this stop."
             )
-            keyboard = [[InlineKeyboardButton("🔙 Back to Stop Menu", callback_data="menu_back")]]
+            keyboard = [[InlineKeyboardButton("Cancel", callback_data="reach_cancel", api_kwargs={"style": "primary"})]]
             await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
             context.user_data.clear()
             return ConversationHandler.END
@@ -455,7 +458,7 @@ async def reach_choose_dest(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             f"📍 Destination: *{dest_name}*\n\n"
             "💬 Enter the time by which you need to reach (e.g. *10:30 AM* or *15:00*):"
         )
-        keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+        keyboard = [[InlineKeyboardButton("Cancel", callback_data="reach_cancel", api_kwargs={"style": "primary"})]]
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return REACH_ENTER_TIME
 
@@ -480,7 +483,7 @@ async def reach_choose_from(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"📍 Destination: *{dest_name}* (From: *{from_point}*)\n\n"
         "💬 Enter the time by which you need to reach (e.g. *10:30 AM* or *15:00*):"
     )
-    keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+    keyboard = [[InlineKeyboardButton("Cancel", callback_data="reach_cancel", api_kwargs={"style": "primary"})]]
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     return REACH_ENTER_TIME
 
@@ -490,7 +493,7 @@ async def reach_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     target_time_24h = parse_user_time(text)
     if not target_time_24h:
-        keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="reach_cancel")]]
+        keyboard = [[InlineKeyboardButton("Cancel", callback_data="reach_cancel", api_kwargs={"style": "primary"})]]
         await update.message.reply_text(
             "❌ *Invalid time format.*\n\nPlease enter the time in formats like *10:30 AM*, *14:15*, or *3:00 PM*:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -624,7 +627,7 @@ async def reach_enter_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             ])
 
     keyboard.append([
-        InlineKeyboardButton("Search Again", callback_data="reach_by_time", api_kwargs={"style": "primary"}),
+        InlineKeyboardButton("Search Again", callback_data="reach_by_time", api_kwargs={"style": "success"}),
         InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})
     ])
 
@@ -673,7 +676,7 @@ async def search_bus_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     results = get_schedules_by_bus_name_search(bus_name, day_type, current_time)
 
-    keyboard = [[InlineKeyboardButton("🔍 Search Again", callback_data="search_bus", api_kwargs={"style": "primary"}),
+    keyboard = [[InlineKeyboardButton("🔍 Search Again", callback_data="search_bus", api_kwargs={"style": "success"}),
                  InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})]]
 
     if not results:
