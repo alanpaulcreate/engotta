@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from src.db import (
     get_destinations, get_destination_by_id, get_next_buses, 
     get_schedule_details, is_date_holiday, get_distinct_from_points,
-    get_schedules_for_day
+    get_schedules_for_day, get_schedules_by_bus_name_search
 )
 from src.utils.time_helper import (
     get_local_now, get_current_time_24h, format_24h_to_12h, 
@@ -40,9 +40,8 @@ def get_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("Reach by Time", callback_data="reach_by_time", api_kwargs={"style": "primary"}),
         InlineKeyboardButton("Available Now", callback_data="available_now", api_kwargs={"style": "primary"})
     ])
-    
-    # 3. External link / App
     keyboard.append([
+        InlineKeyboardButton("🔍 Search Bus by Name", callback_data="search_bus", api_kwargs={"style": "primary"}),
         InlineKeyboardButton("Veyil App", url="https://veyil.app")
     ])
     
@@ -647,4 +646,69 @@ async def reach_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     else:
         await update.message.reply_text("⏹️ Search cancelled. Type /start to open the menu.")
     context.user_data.clear()
+    return ConversationHandler.END
+
+
+# --- Search Bus by Name Conversation ---
+SEARCH_BUS_ENTER_NAME = 10
+
+async def search_bus_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Triggered by 'Search Bus by Name' button. Prompts user to type a bus name."""
+    query = update.callback_query
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("Cancel", callback_data="search_bus_cancel", api_kwargs={"style": "primary"})]]
+    await query.edit_message_text(
+        text="🔍 *Search Bus by Name*\n\nType the bus name (or part of it):\n\n_I'll show all upcoming trips for today._",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return SEARCH_BUS_ENTER_NAME
+
+async def search_bus_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's bus name input and shows matching schedules."""
+    bus_name = update.message.text.strip()
+    now = get_local_now()
+    current_time = now.strftime("%H:%M")
+    day_type = get_day_type(now)
+
+    results = get_schedules_by_bus_name_search(bus_name, day_type, current_time)
+
+    keyboard = [[InlineKeyboardButton("🔍 Search Again", callback_data="search_bus", api_kwargs={"style": "primary"}),
+                 InlineKeyboardButton("Back to Menu", callback_data="menu_back", api_kwargs={"style": "primary"})]]
+
+    if not results:
+        await update.message.reply_text(
+            f"🔍 No upcoming buses matching *\"{bus_name}\"* found for today.\n\n"
+            "Try a different name or check back later.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return SEARCH_BUS_ENTER_NAME
+
+    text = f"🔍 *Results for \"{bus_name}\":*\n\n"
+    for idx, s in enumerate(results[:8], 1):
+        arr_12h = format_24h_to_12h(s["arrival_time"])
+        wait_m = calculate_wait_time_minutes(current_time, s["arrival_time"])
+        wait_str = format_wait_time(wait_m)
+        from_str = f" [From: {s['from_point']}]" if s.get("from_point") and s["from_point"] != "Njarakkadu" else ""
+        text += (
+            f"{idx}. *{s['bus_name']}* ({s['bus_type']}){from_str}\n"
+            f"   ➜ {s['destination_name']} | {arr_12h} (in {wait_str})\n\n"
+        )
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return SEARCH_BUS_ENTER_NAME
+
+async def search_bus_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels the search and returns to main menu."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+        await start_command(update, context)
+    else:
+        await update.message.reply_text("Search cancelled.")
     return ConversationHandler.END

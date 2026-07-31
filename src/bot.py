@@ -10,7 +10,9 @@ from src.handlers.user import (
     route_details_callback,
     reach_by_time_start, reach_choose_dest, reach_choose_from, 
     reach_enter_time, reach_cancel,
-    REACH_CHOOSE_DEST, REACH_CHOOSE_FROM, REACH_ENTER_TIME
+    REACH_CHOOSE_DEST, REACH_CHOOSE_FROM, REACH_ENTER_TIME,
+    search_bus_start, search_bus_query, search_bus_cancel,
+    SEARCH_BUS_ENTER_NAME
 )
 from src.handlers.admin import (
     # Common actions
@@ -152,10 +154,30 @@ def main() -> None:
         per_message=False
     )
     
+    # Search Bus by Name Conversation
+    search_bus_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(search_bus_start, pattern="^search_bus$")
+        ],
+        states={
+            SEARCH_BUS_ENTER_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, search_bus_query),
+                CallbackQueryHandler(search_bus_start, pattern="^search_bus$"),
+                CallbackQueryHandler(search_bus_cancel, pattern="^search_bus_cancel$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(search_bus_cancel, pattern="^search_bus_cancel$"),
+            CallbackQueryHandler(start_command, pattern="^menu_back$")
+        ],
+        per_message=False
+    )
+
     application.add_handler(addbus_conv)
     application.add_handler(editbus_conv)
     application.add_handler(deletebus_conv)
     application.add_handler(reach_by_time_conv)
+    application.add_handler(search_bus_conv)
     
     # 4. Register Commands
     application.add_handler(CommandHandler("start", start_command))
